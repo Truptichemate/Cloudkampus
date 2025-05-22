@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
 #define MAX_TEMPERATURE_THRESHOLD 95.0 // Threshold for extreme temperatures
 #define MAX_READINGS 1000
 
