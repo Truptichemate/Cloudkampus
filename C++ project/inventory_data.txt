@@ -1,0 +1,5 @@
+electronic,smartphone,1,2
+electronic,laptop,1,2
+furniture,sofa,1,ply
+furniture,sofa,1,ply
+chair,2,Furniture,ply

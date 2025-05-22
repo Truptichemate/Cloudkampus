@@ -1,0 +1,175 @@
+#include "stm32c0xx.h"
+#include "stm32c0xx_hal.h"
+
+//  LED Pins
+#define FIRE_ALARM_LED     GPIO_PIN_6  //  Fire Alarm (High Priority)
+#define SECURITY_ALARM_LED GPIO_PIN_7  //  Security Breach (Medium Priority)
+#define LOW_BATTERY_LED    GPIO_PIN_8  //  Low Battery Warning (Timer-based)
+
+// Define Button Pin
+#define FIRE_ALARM_SWITCH  GPIO_PIN_5  //  Fire Alarm Button
+#define BUZZER_PIN         GPIO_PIN_9  //  Buzzer Pin
+
+
+#define LED_GPIO_PORT GPIOA
+#define BUZZER_GPIO_PORT GPIOA
+
+TIM_HandleTypeDef htim3;
+
+
+void SystemClock_Config(void);
+void GPIO_Config(void);
+void TIM3_Config(void);
+void checkFireAlarmSwitch(void);
+
+void activateFireAlarm(void);
+void activateSecurityBreach(void);
+void activateLowBatteryWarning(void);
+void deactivateAlarms(void);
+
+int simulateTemperature(void);
+int simulateBatteryVoltage(void);
+
+
+volatile int simulatedTemperature = 60; 
+volatile int simulatedBatteryVoltage = 3600; 
+volatile int temperatureCounter = 0;  
+volatile int timerCounter = 0;  
+
+int main(void) {
+    HAL_Init();
+    SystemClock_Config();
+    GPIO_Config();
+    TIM3_Config();
+
+    while (1) {
+        //  Increase temperature every 5 loops
+        if (temperatureCounter++ >= 5) {
+            temperatureCounter = 0;
+            simulatedTemperature += 1;
+        }
+
+        //  Fire Alarm (High Priority)
+        checkFireAlarmSwitch();
+
+        //  Security Breach (Simulated Timer)
+        if (timerCounter % 20 == 0) { // Simulate a breach every 20 iterations (simulated)
+            deactivateAlarms();
+            activateSecurityBreach();
+        }
+    }
+}
+
+// GPIO Config for LEDs, Button, and Buzzer
+void GPIO_Config(void) {
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    // LED Pins as Output
+    GPIO_InitStruct.Pin = FIRE_ALARM_LED | SECURITY_ALARM_LED | LOW_BATTERY_LED;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(LED_GPIO_PORT, &GPIO_InitStruct);
+
+    // Buzzer Pin as Output
+    GPIO_InitStruct.Pin = BUZZER_PIN;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(BUZZER_GPIO_PORT, &GPIO_InitStruct);
+
+    // Button (PA0) as Input with Pull-up
+    GPIO_InitStruct.Pin = FIRE_ALARM_SWITCH;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+}
+
+//  Timer3 Config for Low Battery (10s Interval)
+void TIM3_Config(void) {
+    __HAL_RCC_TIM3_CLK_ENABLE();
+
+    TIM_HandleTypeDef htim3;
+    htim3.Instance = TIM3;
+    htim3.Init.Prescaler = 16000 - 1;  // 16 MHz → 1 kHz (1ms per tick)
+    htim3.Init.Period = 10000 - 1;     // 10000 ms (10 sec)
+    htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    HAL_TIM_Base_Init(&htim3);
+
+    HAL_TIM_Base_Start_IT(&htim3);
+    HAL_NVIC_SetPriority(TIM3_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(TIM3_IRQn);
+}
+
+//  Check Fire Alarm Switch
+void checkFireAlarmSwitch(void) {
+    if (HAL_GPIO_ReadPin(GPIOA, FIRE_ALARM_SWITCH) == GPIO_PIN_RESET) {  // Switch Pressed
+        deactivateAlarms();
+        activateFireAlarm();
+    }
+}
+
+//  Timer3 Interrupt Handler (Low Battery Warning)
+void TIM3_IRQHandler(void) {
+    if (__HAL_TIM_GET_IT_SOURCE(&htim3, TIM_IT_UPDATE) != RESET) {
+        __HAL_TIM_CLEAR_IT(&htim3, TIM_IT_UPDATE);
+
+        // Simulated battery drops over time
+        simulatedBatteryVoltage -= 50;
+        if (simulatedBatteryVoltage < 3300) {
+            simulatedBatteryVoltage = 3300;  // Stop at 3.3V
+        }
+
+        if (simulateBatteryVoltage() < 3400) {
+            activateLowBatteryWarning();
+        }
+
+        // Security Breach Detection
+        timerCounter++;
+    }
+}
+
+//  Fire Alarm 
+void activateFireAlarm(void) {
+    HAL_GPIO_WritePin(LED_GPIO_PORT, FIRE_ALARM_LED, GPIO_PIN_SET);  // Red LED ON
+    HAL_GPIO_WritePin(BUZZER_GPIO_PORT, BUZZER_PIN, GPIO_PIN_SET);  // Buzzer ON
+}
+
+//  Security Breach 
+void activateSecurityBreach(void) {
+    HAL_GPIO_WritePin(LED_GPIO_PORT, SECURITY_ALARM_LED, GPIO_PIN_SET);  // Yellow LED ON
+}
+
+//  Low Battery Warning  - Timer Triggered
+void activateLowBatteryWarning(void) {
+    HAL_GPIO_TogglePin(LED_GPIO_PORT, LOW_BATTERY_LED);  // Green LED Toggle
+}
+
+//  Deactivate All Alarms
+void deactivateAlarms(void) {
+    HAL_GPIO_WritePin(LED_GPIO_PORT, FIRE_ALARM_LED, GPIO_PIN_RESET);  // Red LED OFF
+    HAL_GPIO_WritePin(LED_GPIO_PORT, SECURITY_ALARM_LED, GPIO_PIN_RESET);  // Yellow LED OFF
+    HAL_GPIO_WritePin(LED_GPIO_PORT, LOW_BATTERY_LED, GPIO_PIN_RESET);  // Green LED OFF
+    HAL_GPIO_WritePin(BUZZER_GPIO_PORT, BUZZER_PIN, GPIO_PIN_RESET);  // Buzzer OFF
+}
+
+// Simulate Temperature Sensor (Increases Over Time)
+int simulateTemperature(void) {
+    // Increase temperature by 1 degree Celsius after every 5 iterations
+    if (temperatureCounter % 5 == 0 && simulatedTemperature < 100) {
+        simulatedTemperature += 1;  // Increase by 1°C
+    }
+    return simulatedTemperature;  // Return the simulated temperature
+}
+
+//  Simulate Battery Voltage Drop (decreases over Time)
+int simulateBatteryVoltage(void) {
+    // Simulate a decrease in battery voltage by 50mV every 5 iterations (slow discharge)
+    if (timerCounter % 5 == 0 && simulatedBatteryVoltage > 3300) {  // Stop at 3.3V
+        simulatedBatteryVoltage -= 50;  // Decrease by 50mV
+    }
+    return simulatedBatteryVoltage;  // Return the current simulated battery voltage
+}
